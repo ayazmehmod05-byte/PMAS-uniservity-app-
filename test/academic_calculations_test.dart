@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pmas_aaur_student_app/core/data/mock_data.dart';
 import 'package:pmas_aaur_student_app/core/models/attendance_record.dart';
+import 'package:pmas_aaur_student_app/core/models/class_announcement.dart';
 import 'package:pmas_aaur_student_app/core/models/course.dart';
 import 'package:pmas_aaur_student_app/core/utils/academic_calculations.dart';
 
@@ -29,14 +30,12 @@ void main() {
     });
 
     test('clamps result to 0 for negative attended (data anomaly)', () {
-      // negative attended should still stay at or above 0
       final result = attendancePercentage(-5, 30);
       expect(result, greaterThanOrEqualTo(0.0));
       expect(result, lessThanOrEqualTo(100.0));
     });
 
     test('calculates fractional percentage correctly', () {
-      // 11 / 30 * 100 = 36.666…
       expect(attendancePercentage(11, 30), closeTo(36.666, 0.001));
     });
   });
@@ -91,8 +90,6 @@ void main() {
     test(
       'uses combined totals rather than averaging individual percentages',
       () {
-        // Subject A: 1/2 = 50%,  Subject B: 9/10 = 90%
-        // Simple average would be 70%, but combined = 10/12 ≈ 83.33%
         const records = [
           AttendanceRecord(
             subjectName: 'One',
@@ -196,7 +193,6 @@ void main() {
           total: 10,
         ),
       ];
-      // 5 / 10 = 50%  (the zero-total record contributes nothing)
       expect(overallAttendancePercentage(records), closeTo(50.0, 0.001));
     });
   });
@@ -246,9 +242,124 @@ void main() {
     });
 
     test('returns correct total for mock course data', () {
-      // mockCourses: CSC-202(3) + CSC-203(4) + CSC-204(3) + CSC-205(3) +
-      //              MTH-220(3) + ENG-201(3) = 19
       expect(totalCreditHours(mockCourses), 19);
+    });
+  });
+
+  // ─── AttendanceRecord Model Enhancements ───────────────────────────────────
+
+  group('AttendanceRecord model methods', () {
+    test('computes percentage directly on record instance', () {
+      const record = AttendanceRecord(
+        subjectName: 'Security',
+        courseCode: 'CSC-202',
+        section: 'A',
+        semester: 3,
+        attended: 15,
+        total: 20,
+      );
+      expect(record.percentage, 75.0);
+      expect(record.meetsUniversityTarget, isTrue);
+      expect(record.isCritical, isFalse);
+    });
+
+    test('computes missed classes accurately', () {
+      const record = AttendanceRecord(
+        subjectName: 'Networks',
+        courseCode: 'CSC-204',
+        section: 'A',
+        semester: 3,
+        attended: 12,
+        total: 20,
+      );
+      expect(record.missedClasses, 8);
+    });
+
+    test('flags low attendance below 50%', () {
+      const record = AttendanceRecord(
+        subjectName: 'Physics',
+        courseCode: 'PHY-201',
+        section: 'A',
+        semester: 3,
+        attended: 4,
+        total: 10,
+      );
+      expect(record.percentage, 40.0);
+      expect(record.isCritical, isTrue);
+      expect(record.meetsUniversityTarget, isFalse);
+    });
+
+    test('calculates needed classes to reach 75% target', () {
+      // 10 attended out of 20 = 50%.
+      // To reach 75%: (10 + x)/(20 + x) >= 0.75 => 10 + x >= 15 + 0.75x => 0.25x >= 5 => x >= 20.
+      const record = AttendanceRecord(
+        subjectName: 'Math',
+        courseCode: 'MTH-101',
+        section: 'A',
+        semester: 1,
+        attended: 10,
+        total: 20,
+      );
+      expect(record.classesNeededToReach(75.0), 20);
+    });
+
+    test('returns 0 needed classes if target is already met', () {
+      const record = AttendanceRecord(
+        subjectName: 'SE',
+        courseCode: 'CSC-205',
+        section: 'A',
+        semester: 3,
+        attended: 24,
+        total: 30, // 80%
+      );
+      expect(record.classesNeededToReach(75.0), 0);
+    });
+  });
+
+  // ─── Course Model & Announcement Tests ────────────────────────────────────
+
+  group('Course and ClassAnnouncement models', () {
+    test('Course isEnrolled and isCompleted getters', () {
+      const enrolled = Course(
+        code: 'CSC-101',
+        name: 'CS',
+        teacher: 'T',
+        creditHours: 3,
+        section: 'A',
+        semester: 1,
+        session: 'Fall 2026',
+        status: 'Enrolled',
+      );
+      expect(enrolled.isEnrolled, isTrue);
+      expect(enrolled.isCompleted, isFalse);
+
+      const completed = Course(
+        code: 'ENG-101',
+        name: 'English',
+        teacher: 'T',
+        creditHours: 3,
+        section: 'A',
+        semester: 1,
+        session: 'Spring 2026',
+        status: 'Completed',
+      );
+      expect(completed.isEnrolled, isFalse);
+      expect(completed.isCompleted, isTrue);
+    });
+
+    test('ClassAnnouncement copyWith updates read status', () {
+      const ann = ClassAnnouncement(
+        id: 'test-1',
+        title: 'Title',
+        message: 'Message',
+        category: 'CR Notice',
+        author: 'CR',
+        timeAgo: 'Now',
+        isRead: false,
+      );
+      final updated = ann.copyWith(isRead: true);
+      expect(updated.isRead, isTrue);
+      expect(updated.title, 'Title');
     });
   });
 
@@ -295,6 +406,23 @@ void main() {
     test('overallDemoAttendance is pre-calculated and within valid range', () {
       expect(overallDemoAttendance, greaterThanOrEqualTo(0));
       expect(overallDemoAttendance, lessThanOrEqualTo(100));
+    });
+
+    test('mockClassSchedule has valid lecture and lab items', () {
+      expect(mockClassSchedule, isNotEmpty);
+      for (final item in mockClassSchedule) {
+        expect(item.subjectName, isNotEmpty);
+        expect(item.timeSlot, isNotEmpty);
+        expect(item.room, isNotEmpty);
+      }
+    });
+
+    test('mockAnnouncements has items with valid categories', () {
+      expect(mockAnnouncements, isNotEmpty);
+      for (final ann in mockAnnouncements) {
+        expect(ann.title, isNotEmpty);
+        expect(ann.author, isNotEmpty);
+      }
     });
   });
 }

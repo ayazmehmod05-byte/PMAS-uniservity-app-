@@ -1,3 +1,4 @@
+/// Immutable representation of an enrolled academic course.
 class Course {
   const Course({
     required this.code,
@@ -8,6 +9,9 @@ class Course {
     required this.semester,
     required this.session,
     required this.status,
+    this.type = 'Theory',
+    this.schedule,
+    this.room,
   });
 
   final String code;
@@ -18,4 +22,10 @@ class Course {
   final int semester;
   final String session;
   final String status;
+  final String type;
+  final String? schedule;
+  final String? room;
+
+  bool get isCompleted => status.toLowerCase() == 'completed';
+  bool get isEnrolled => status.toLowerCase() == 'enrolled';
 }
